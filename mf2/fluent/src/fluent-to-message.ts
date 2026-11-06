@@ -82,13 +82,30 @@ function asSelectorDeclaration(
     }
   }
   const exp = asExpression(selector);
-  return exp.arg?.type === 'variable'
-    ? {
+  if (exp.arg?.type === 'variable') {
+    // A function annotation on an .input declaration also applies to every
+    // plain placeholder of the same variable in the message pattern.
+    // In Fluent, the options of a selector function call such as
+    // NUMBER($n, minimumFractionDigits: 2) only affect the selection,
+    // so a selector carrying options must be bound to a local variable
+    // instead; the variant placeholders then use the default formatting.
+    // The same applies to selectors rewritten by asExpression() to the
+    // :currency or :unit functions, which originate from a NUMBER()
+    // style option and would otherwise change placeholder formatting too.
+    const { functionRef } = exp as MF.Expression<MF.VariableRef>;
+    const hasOptions =
+      functionRef?.options && Object.keys(functionRef.options).length > 0;
+    const styleDerived =
+      functionRef?.name === 'currency' || functionRef?.name === 'unit';
+    if (!hasOptions && !styleDerived) {
+      return {
         type: 'input',
         name: exp.arg.name,
         value: exp as MF.Expression<MF.VariableRef>
-      }
-    : { type: 'local', name: `_${index}`, value: exp };
+      };
+    }
+  }
+  return { type: 'local', name: `_${index}`, value: exp };
 }
 
 function asValue(exp: Fluent.VariableReference): MF.VariableRef;

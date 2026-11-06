@@ -104,6 +104,20 @@ const testCases: Record<string, TestCase> = {
     ]
   },
 
+  'Function call selectors with options': {
+    src: source`
+      items = { NUMBER($n, minimumFractionDigits: 2) ->
+          [one] {$n} item
+         *[other] {$n} items
+        }
+    `,
+    tests: [
+      { msg: 'items', scope: { n: 1 }, exp: '1 items' },
+      { msg: 'items', scope: { n: 5 }, exp: '5 items' },
+      { msg: 'items', scope: { n: 1000 }, exp: '1,000 items' }
+    ]
+  },
+
   'Literals as selectors': {
     src: source`
       foo = { "a" ->
@@ -753,6 +767,59 @@ describe('fluentToResourceData', () => {
                   }
           }
     `);
+  });
+});
+
+describe('Selector function options', () => {
+  const src = source`
+    items = { NUMBER($n, minimumFractionDigits: 2) ->
+        [one] {$n} item
+       *[other] {$n} items
+      }
+  `;
+  const { data } = fluentToResourceData(src);
+  const msg = data.get('items')?.get('') as MF.SelectMessage;
+
+  test('selector with options is bound to a local declaration', () => {
+    expect(msg.declarations).toEqual([
+      {
+        type: 'local',
+        name: '_0',
+        value: {
+          type: 'expression',
+          arg: { type: 'variable', name: 'n' },
+          functionRef: {
+            type: 'function',
+            name: 'number',
+            options: {
+              minimumFractionDigits: { type: 'literal', value: '2' }
+            }
+          }
+        }
+      }
+    ]);
+    expect(msg.selectors).toEqual([{ type: 'variable', name: '_0' }]);
+  });
+
+  test('variant placeholders have no function annotation', () => {
+    for (const variant of msg.variants) {
+      for (const part of variant.value) {
+        if (typeof part !== 'string') {
+          expect(part).toEqual({
+            type: 'expression',
+            arg: { type: 'variable', name: 'n' }
+          });
+        }
+      }
+    }
+  });
+
+  test('runtime formatting uses defaults for variant placeholders', () => {
+    const res = fluentToResource('en', src, { bidiIsolation: 'none' });
+    const mf = res.get('items')?.get('');
+    expect(mf?.format({ n: 1 })).toBe('1 items');
+    expect(mf?.format({ n: 5 })).toBe('5 items');
+    expect(mf?.format({ n: 1000 })).toBe('1,000 items');
   });
 });
 
